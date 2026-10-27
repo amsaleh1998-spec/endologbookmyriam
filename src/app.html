@@ -1,0 +1,971 @@
+<title>Endo Logbook Builder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one logbook section per screen, sticky progress header, thumb-reach Back/Next bar. */
+:root {
+  --bg: #f2f6f7;
+  --surface: #ffffff;
+  --ink: #12222a;
+  --muted: #56676f;
+  --line: #d3dde1;
+  --line-strong: #9fb0b7;
+  --accent: #0b6b74;
+  --accent-ink: #ffffff;
+  --accent-soft: #dff0f1;
+  --tooth: #ffffff;
+  --warn: #a14a06;
+  --warn-soft: #fbeedd;
+  --ok: #1d7a46;
+  --font-ui: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d171b; --surface: #142228; --ink: #e4edf0; --muted: #94a6ad; --line: #26373e; --line-strong: #4b6069;
+    --accent: #52b9c2; --accent-ink: #061517; --accent-soft: #163a3f; --tooth: #1d2e35; --warn: #f0a35e; --warn-soft: #3a2817; --ok: #6fcf97;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d171b; --surface: #142228; --ink: #e4edf0; --muted: #94a6ad; --line: #26373e; --line-strong: #4b6069;
+  --accent: #52b9c2; --accent-ink: #061517; --accent-soft: #163a3f; --tooth: #1d2e35; --warn: #f0a35e; --warn-soft: #3a2817; --ok: #6fcf97;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; -webkit-tap-highlight-color: transparent; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 680px; margin: 0 auto; }
+
+/* Header */
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.top .wrap { padding-block: 10px 12px; display: grid; gap: 10px; }
+.top-row { display: flex; align-items: center; gap: 12px; }
+.brand { font-weight: 700; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.brand b { color: var(--accent); }
+.spacer { flex: 1; }
+.sections-btn { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.sections-btn:hover { border-color: var(--line-strong); }
+.progress { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 3px; }
+.progress button { height: 6px; border: 0; padding: 0; border-radius: 3px; background: var(--line); cursor: pointer; position: relative; }
+.progress button::after { content: ""; position: absolute; inset: -9px 0; }
+.progress button.done { background: var(--line-strong); }
+.progress button.current { background: var(--accent); }
+
+/* Step */
+main .wrap { padding-block: 22px 140px; }
+.eyebrow { font-family: var(--font-data); font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+h1 { font-size: clamp(24px, 6vw, 30px); line-height: 1.15; margin: 4px 0 6px; text-wrap: balance; letter-spacing: -.01em; }
+.intro { color: var(--muted); margin: 0 0 22px; max-width: 60ch; }
+.fields { display: grid; gap: 22px; }
+.field { display: grid; gap: 8px; min-width: 0; }
+.label { font-weight: 600; font-size: 14px; }
+.hint { font-size: 13px; color: var(--muted); }
+.err { font-size: 13px; color: var(--warn); font-weight: 600; }
+.sub-heading { margin: 10px 0 -6px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 420px) { .pair { grid-template-columns: 1fr; } }
+
+input[type=text], input[type=date], textarea {
+  width: 100%; max-width: 100%; font-size: 16px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 8px; padding: 11px 12px; min-height: 46px;
+}
+input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input.mono { font-family: var(--font-data); letter-spacing: .04em; }
+input.invalid { border-color: var(--warn); }
+textarea { resize: vertical; min-height: 92px; line-height: 1.45; }
+
+/* Choice chips: the box echoes the paper logbook's □ / ☒ */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips.vertical { display: grid; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 9px; min-height: 42px; padding: 8px 14px 8px 11px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 8px; cursor: pointer; text-align: left; line-height: 1.3; }
+.chip:hover { border-color: var(--accent); }
+.chip .box { flex: none; width: 16px; height: 16px; border: 1.5px solid var(--line-strong); border-radius: 3px; position: relative; }
+.chip.on { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.chip.on .box { border-color: var(--accent); background: var(--accent); }
+.chip.on .box::before, .chip.on .box::after { content: ""; position: absolute; left: 6px; top: 1px; width: 1.6px; height: 11px; background: var(--accent-ink); transform: rotate(45deg); }
+.chip.on .box::after { transform: rotate(-45deg); }
+
+.inline-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 14px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.inline-row .label { font-weight: 500; }
+.inline-row .chip { min-height: 38px; padding-block: 6px; }
+.inline-group { display: grid; }
+.inline-group .inline-row:last-child { border-bottom: 0; }
+@media (max-width: 520px) { .inline-row { grid-template-columns: 1fr; } }
+.extra { margin-top: 2px; }
+
+/* Presets */
+.presets { display: grid; gap: 8px; }
+.preset { border: 1px solid var(--line-strong); background: var(--surface); border-radius: var(--r); }
+.preset.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.preset > button { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 11px; width: 100%; text-align: left; background: none; border: 0; padding: 12px 14px; cursor: pointer; border-radius: var(--r); }
+.preset .dot { grid-row: span 2; margin-top: 3px; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-strong); }
+.preset.on .dot { border: 5px solid var(--accent); }
+.preset .name { font-weight: 600; }
+.preset .text { color: var(--muted); font-size: 14px; }
+.preset.on .text { color: var(--ink); }
+.preset .params { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 14px 12px 43px; align-items: end; }
+.preset .params label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.preset .params input { width: 8.5em; min-height: 40px; padding: 8px 10px; }
+.preset .tools { padding: 0 14px 12px 43px; }
+.linkbtn { background: none; border: 0; padding: 4px 0; color: var(--accent); font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.preset.custom .area { padding: 0 14px 14px; }
+.preset.disabled > button { cursor: default; opacity: .6; }
+
+/* Tooth chart */
+.chart-card { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 10px 8px 4px; }
+.chart { width: 100%; max-width: 440px; display: block; margin: 0 auto; }
+.chart .t { cursor: pointer; }
+.chart .t .shape { fill: var(--tooth); stroke: var(--line-strong); stroke-width: 1.3; transition: fill .12s; }
+.chart .t:hover .shape { stroke: var(--accent); stroke-width: 2; }
+.chart .t.sel .shape { fill: var(--accent); stroke: var(--accent); }
+.chart .t .hit { fill: transparent; }
+.chart .t:focus { outline: none; }
+.chart .t:focus-visible .shape { stroke: var(--accent); stroke-width: 3; }
+.chart .num { font-family: var(--font-data); font-size: 11px; fill: var(--muted); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.chart .t.sel .num { fill: var(--accent); font-weight: 600; }
+.chart .mid { stroke: var(--line); stroke-dasharray: 3 4; }
+.chart .side { font-size: 10px; letter-spacing: .1em; fill: var(--muted); font-weight: 700; text-anchor: middle; }
+.chart .big { font-family: var(--font-data); font-size: 34px; font-weight: 600; fill: var(--ink); text-anchor: middle; }
+.chart .big.empty { fill: var(--line-strong); }
+.chart .cap { font-size: 11.5px; fill: var(--muted); text-anchor: middle; }
+
+/* Review */
+.review { display: grid; gap: 8px; }
+.rv { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); cursor: pointer; text-align: left; width: 100%; }
+.rv:hover { border-color: var(--line-strong); }
+.rv .n { font-family: var(--font-data); font-size: 12px; color: var(--muted); grid-row: span 2; width: 2ch; }
+.rv .tt { font-weight: 600; }
+.rv .missing { grid-column: 2; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.rv .count { grid-row: span 2; font-family: var(--font-data); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); white-space: nowrap; }
+.rv .count.full { background: var(--accent-soft); color: var(--accent); }
+.note { border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; color: var(--muted); font-size: 14px; background: var(--surface); }
+.gen-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px; }
+.status { font-size: 14px; font-weight: 600; }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--warn); }
+
+/* Bottom nav */
+.nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.nav .wrap { display: flex; gap: 10px; padding-block: 10px; }
+.btn { min-height: 48px; border-radius: 10px; padding: 0 18px; font-weight: 700; cursor: pointer; border: 1px solid var(--line-strong); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn:disabled { opacity: .4; cursor: default; }
+.nav .btn.primary { flex: 1; min-width: 0; }
+.nav .btn { flex-shrink: 0; }
+.btn .sub { min-width: 0; font-weight: 500; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Sections sheet */
+.sheet { position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / .35); display: flex; justify-content: center; align-items: flex-end; }
+.sheet .panel { background: var(--surface); width: 100%; max-width: 680px; max-height: 82vh; overflow: auto; border-radius: 16px 16px 0 0; padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet h2 { font-size: 16px; margin: 4px 0 10px; display: flex; justify-content: space-between; align-items: center; }
+.sheet ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sheet li button { width: 100%; display: grid; grid-template-columns: 2.4ch minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; padding: 11px 10px; border: 0; background: none; border-radius: 8px; cursor: pointer; }
+.sheet li button:hover { background: var(--bg); }
+.sheet li button.cur { background: var(--accent-soft); font-weight: 700; }
+.sheet .n { font-family: var(--font-data); font-size: 12px; color: var(--muted); }
+.sheet .pip { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--line-strong); }
+.sheet .pip.part { background: linear-gradient(90deg, var(--accent) 50%, transparent 50%); border-color: var(--accent); }
+.sheet .pip.full { background: var(--accent); border-color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+
+<header class="top gutter">
+  <div class="wrap">
+    <div class="top-row">
+      <div class="brand"><b>Endo</b> Logbook</div>
+      <div class="spacer"></div>
+      <button type="button" class="sections-btn" id="open-sections" aria-haspopup="dialog">Sections</button>
+    </div>
+    <div class="progress" id="progress" aria-label="Sections"></div>
+  </div>
+</header>
+
+<main class="gutter"><div class="wrap" id="main"></div></main>
+
+<nav class="nav gutter" aria-label="Step navigation">
+  <div class="wrap">
+    <button type="button" class="btn" id="back">Back</button>
+    <button type="button" class="btn primary" id="next"></button>
+  </div>
+</nav>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <div class="panel">
+    <h2><span id="sheet-title">Jump to a section</span><button type="button" class="linkbtn" id="close-sections">Close</button></h2>
+    <ol id="sheet-list"></ol>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const TEMPLATE_B64 = "__TEMPLATE_B64__";
+
+/* ---------------- Schema ---------------- */
+const PA = ["Present", "Absent"], NP = ["Negative", "Positive"];
+const X_PRESET = [{ name: "X", text: "X", note: "Nothing to report" }];
+const NA_PRESET = [{ name: "Not applicable", text: "Not applicable" }];
+const has = (id, o) => (S[id] || []).includes(o);
+
+const STEPS = [
+  { key: "case", num: "", title: "Case details", intro: "Cover page and case header. Your name and ID are remembered for the next case.", fields: [
+    { t: "pair", fields: [
+      { t: "text", id: "student", label: "Student full name", placeholder: "Your full name" },
+      { t: "text", id: "studentId", label: "Student ID", inputmode: "numeric", mono: true, placeholder: "Your student ID" } ] },
+    { t: "pair", fields: [
+      { t: "text", id: "caseNo", label: "Case No.", inputmode: "numeric", mono: true },
+      { t: "date", id: "date", label: "Date" } ] },
+    { t: "tooth", id: "tooth", label: "Tooth (FDI)" } ] },
+
+  { key: "patient", num: "1", title: "Patient Information", fields: [
+    { t: "text", id: "patientName", label: "Full name" },
+    { t: "pair", fields: [
+      { t: "fileno", id: "fileNo", label: "File No.", hint: "Format xx/xxxxxx" },
+      { t: "text", id: "age", label: "Age", inputmode: "numeric", mono: true } ] },
+    { t: "single", id: "sex", label: "Sex", options: ["Male", "Female"] },
+    { t: "preset", id: "medHistory", label: "Medical history – medications", presets: [
+      { name: "Healthy patient", text: "Healthy patient, no allergies. No contraindications to routine endodontic treatment, local anesthesia with vasoconstrictor, or analgesics/NSAIDs." } ] } ] },
+
+  { key: "history", num: "2", title: "History", fields: [
+    { t: "preset", id: "chiefComplaint", label: "Chief complaint", presets: [
+      { name: "Retreatment for prosthetic purposes", text: "Retreatment referred for prosthetic purposes, no specific patient complaint, tooth is asymptomatic." } ] },
+    { t: "textarea", id: "dentalHistory", label: "Dental history" },
+    { t: "heading", text: "Type of pain" },
+    { t: "multi", id: "painOnset", label: "Spontaneous / provoked", options: ["Spontaneous", "Provoked"] },
+    { t: "multi", id: "provoked", label: "Provoked by", options: ["Cold", "Heat", "Mastication", "Other"], showIf: () => has("painOnset", "Provoked"),
+      extras: { Other: { id: "provokedOther", placeholder: "Other trigger" } } },
+    { t: "single", id: "duration", label: "Duration", options: ["Brief (<30 seconds)", "Prolonged (>30 seconds)"] },
+    { t: "multi", id: "character", label: "Character", options: ["Throbbing", "Continuous", "Sharp", "Nocturnal", "Other"],
+      extras: { Other: { id: "characterOther", placeholder: "Other character" } } },
+    { t: "single", id: "location", label: "Localized / diffuse", options: ["Localized", "Diffuse"] },
+    { t: "preset", id: "relieving", label: "Factors relieving pain", presets: NA_PRESET },
+    { t: "preset", id: "painMeds", label: "Medications taken during painful episodes", presets: NA_PRESET } ] },
+
+  { key: "clinical", num: "3", title: "Clinical Examination", fields: [
+    { t: "heading", text: "Extraoral inspection" },
+    { t: "rows", rows: [
+      { id: "eoSymmetry", label: "Facial symmetry", options: PA },
+      { id: "eoSinus", label: "Cutaneous sinus tract", options: PA },
+      { id: "eoSwelling", label: "Swelling", options: PA } ] },
+    { t: "preset", id: "tissue", label: "Tissue condition", presets: X_PRESET },
+    { t: "preset", id: "eoOther", label: "Other observations", presets: X_PRESET },
+    { t: "heading", text: "Intraoral inspection" },
+    { t: "rows", rows: [
+      { id: "ioSwelling", label: "Swelling / Vestibular obliteration", options: PA },
+      { id: "ioSinus", label: "Sinus tract", options: PA },
+      { id: "ioPocket", label: "Periodontal pocket", options: PA },
+      { id: "ioWear", label: "Erosion / Abrasion / Attrition", options: PA },
+      { id: "ioCaries", label: "Caries / Cavity", options: PA },
+      { id: "ioResto", label: "Restoration", options: PA } ] },
+    { t: "heading", text: "Tests" },
+    { t: "single", id: "tCold", label: "Cold", options: ["Negative", "Positive normal response", "Positive prolonged and increased response"] },
+    { t: "rows", rows: [
+      { id: "tPerc", label: "Percussion", options: NP },
+      { id: "tMob", label: "Mobility", options: NP },
+      { id: "tPalp", label: "Palpation", options: NP },
+      { id: "tCavity", label: "Cavity test (if applicable)", options: NP },
+      { id: "tSelAnes", label: "Selective anesthesia test (if applicable)", options: NP },
+      { id: "tBite", label: "Bite test (if applicable)", options: NP } ] } ] },
+
+  { key: "radio", num: "4", title: "Radiographic Examination", fields: [
+    { t: "multi", id: "rxType", label: "Type of radiograph", options: ["Periapical", "CBCT", "Bitewing"],
+      extras: { Periapical: { id: "rxAngulations", placeholder: "Number of angulations", inputmode: "numeric" } } },
+    { t: "heading", text: "Radiographic observations" },
+    { t: "textarea", id: "rxCoronal", label: "1- Coronal" },
+    { t: "multi", id: "rxRadicular", label: "2- Radicular", vertical: true,
+      options: ["Narrowing / Calcification", "Resorption", "Open apex", "Other observations", "Observations in case of previous endodontic treatment"],
+      extras: {
+        "Resorption": { id: "rxResorption", placeholder: "Specify the resorption" },
+        "Other observations": { id: "rxRadOther", placeholder: "Describe" },
+        "Observations in case of previous endodontic treatment": { id: "rxPrevTx", placeholder: "Details (optional)" } } },
+    { t: "multi", id: "rxLesions", label: "3- Periradicular lesions", vertical: true,
+      options: ["Periapical radiolucency", "Periapical radiopacity", "Lateral radicular lesion", "Other observations"],
+      extras: { "Other observations": { id: "rxLesionOther", placeholder: "Describe" } } } ] },
+
+  { key: "pulpal", num: "5", title: "Pulpal Diagnosis", intro: "AAE 2009 terminology.", fields: [
+    { t: "single", id: "pulpal", label: "Pulpal diagnosis", vertical: true, options: ["Normal pulp", "Reversible pulpitis", "Symptomatic irreversible pulpitis", "Asymptomatic irreversible pulpitis", "Pulp necrosis", "Previously initiated therapy", "Previously treated"] } ] },
+
+  { key: "periradicular", num: "6", title: "Periradicular Diagnosis", intro: "AAE 2009 terminology. The final diagnosis is built from both selections.", fields: [
+    { t: "single", id: "periradicular", label: "Periradicular diagnosis", vertical: true, options: ["Normal apical tissues", "Symptomatic apical periodontitis", "Asymptomatic apical periodontitis", "Acute apical abscess", "Chronic apical abscess", "Condensing osteitis"] },
+    { t: "preset", id: "finalDx", label: "Final diagnosis (pulpal + periradicular)", presets: [
+      { name: "From my selections", dynamic: () => finalDiagnosis(), empty: "Select a pulpal and a periradicular diagnosis first." } ] } ] },
+
+  { key: "plan", num: "7", title: "Treatment Plan", fields: [
+    { t: "single", id: "txPlan", label: "Treatment", vertical: true, options: ["Primary root canal treatment", "Endodontic retreatment", "Primary root canal treatment - vital pulp therapy"] },
+    { t: "textarea", id: "txAlternatives", label: "Treatment alternatives" },
+    { t: "toggle", id: "consent", label: "Patient consent obtained" },
+    { t: "preset", id: "insists", label: "Specify if the patient insists on retaining the tooth despite an unfavorable prognosis", presets: X_PRESET } ] },
+
+  { key: "procedure", num: "8", title: "Clinical Procedure Performed", fields: [
+    { t: "preset", id: "anesthesia", label: "Anesthesia technique and anesthetic agent", presets: [
+      { name: "Buccal infiltration", text: "Buccal infiltration adjacent to the tooth using 4% articaine with 1:100,000 epinephrine (1 cartridge 1.8 mL)." },
+      { name: "IANB", text: "Inferior alveolar nerve block (IANB) using 4% articaine with 1:100,000 epinephrine (1 cartridge 1.8 mL)." },
+      { name: "IANB + supplemental infiltration and intraligamentary", text: "Inferior alveolar nerve block (IANB) using 4% articaine with 1:100,000 epinephrine (1 cartridge 1.8 mL). Supplemental buccal infiltration administered using 4% articaine with 1:100,000 epinephrine (half a cartridge), and the other half distributed in intra-ligamentary injections all around the tooth." } ] },
+    { t: "preset", id: "isolation", label: "Isolation technique (rubber dam and clamp selection)", presets: [
+      { name: "Winged molar clamp + liquid dam", text: "Single tooth isolation with a winged molar clamp #{clamp}. Light-cured liquid dam (TopDam/FGM) applied to prevent microleakage.",
+        params: [{ key: "clamp", label: "Clamp #", placeholder: "e.g. 12A" }] } ] },
+    { t: "textarea", id: "access", label: "Access cavity preparation (instruments/materials used)" },
+    { t: "textarea", id: "negotiation", label: "Canal negotiation and working length determination (file/instrument – apex locator and radiographs)" },
+    { t: "textarea", id: "shaping", label: "Instrumentation / canal shaping (manual – rotary / specify the rotary instrument selected)" },
+    { t: "preset", id: "irrigation", label: "Irrigation and intracanal medication", presets: [
+      { name: "NaOCl + sonic activation + EDTA", text: "The canals were irrigated with sodium hypochlorite ({naocl}%) during instrumentation, with sonic activation using Emate Activator (Denco). A final rinse was made with liquid EDTA 17%, followed by a final 3 mL of sodium hypochlorite.",
+        params: [{ key: "naocl", label: "NaOCl %", placeholder: "e.g. 5.25", inputmode: "decimal" }] } ] },
+    { t: "preset", id: "obturation", label: "Obturation technique", presets: [
+      { name: "Warm vertical compaction", text: "The canals were obturated with gutta-percha using the warm vertical compaction technique, with the apical down-pack performed using the Fast Pack Pro (Eighteeth), followed by backfilling with thermoplasticized gutta-percha with a gutta condenser." } ] },
+    { t: "preset", id: "sealer", label: "Sealer", presets: [
+      { name: "Sealite™ Regular", text: "Sealite™ Regular, zinc oxide eugenol based (Acteon)" },
+      { name: "K-Sealer Universal", text: "K-Sealer Universal, zinc oxide eugenol based (Rekita)" } ] },
+    { t: "multi", id: "restoration", label: "Restoration", options: ["Temporary restoration", "Permanent restoration"] } ] },
+
+  { key: "challenges", num: "9", title: "Challenges – Complications", fields: [
+    { t: "textarea", id: "challenges", label: "Challenges encountered – management" },
+    { t: "textarea", id: "complications", label: "Complications – management" } ] },
+
+  { key: "postop", num: "10", title: "Postoperative Instructions", fields: [
+    { t: "preset", id: "painMgmt", label: "Pain management", presets: [
+      { name: "Paracetamol 500 mg, up to 1 week", text: "Paracetamol 500mg was prescribed after treatment in case of sensitivity to touch or pain on chewing up to 1 week after treatment." } ] },
+    { t: "textarea", id: "followSchedule", label: "Postoperative follow-up schedule" } ] },
+
+  { key: "followup", num: "11", title: "Follow-up and Outcomes", fields: [
+    { t: "textarea", id: "healing", label: "Healing status" },
+    { t: "textarea", id: "future", label: "Future interventions (if applicable)" } ] },
+
+  { key: "reflections", num: "12", title: "Reflections / Learning", fields: [
+    { t: "textarea", id: "keyPoints", label: "Key points learned from the case" },
+    { t: "textarea", id: "skills", label: "Skills and knowledge acquired" } ] },
+
+  { key: "review", num: "", title: "Review and generate", fields: [] }
+];
+
+/* ---------------- State ---------------- */
+const DRAFT_KEY = "endoLogbookMyriam.draft.v1", STUDENT_KEY = "endoLogbookMyriam.student.v1";
+const DEFAULT_STUDENT = { student: "Myriam Maroun Karam", studentId: "190219" };
+const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+function freshState() {
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem(STUDENT_KEY) || "{}") || {}; } catch (e) {}
+  return { step: 0, student: st.student || DEFAULT_STUDENT.student, studentId: st.studentId || DEFAULT_STUDENT.studentId, date: today(), consent: true };
+}
+let S;
+try { S = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch (e) { S = null; }
+if (!S || typeof S !== "object") S = freshState();
+function save() {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(S));
+    localStorage.setItem(STUDENT_KEY, JSON.stringify({ student: S.student || "", studentId: S.studentId || "" }));
+  } catch (e) {}
+}
+
+function finalDiagnosis() {
+  const p = S.pulpal, r = S.periradicular;
+  if (!p || !r) return "";
+  const pulpWords = { "Previously treated": "previously treated pulp" };
+  const s = (pulpWords[p] || p.toLowerCase()) + " + " + r.toLowerCase();
+  return s[0].toUpperCase() + s.slice(1);
+}
+function presetValue(field) {
+  const v = S[field.id];
+  if (!v || v.sel == null) return "";
+  if (v.sel === "custom") return (v.custom || "").trim();
+  const p = field.presets[v.sel];
+  if (!p) return "";
+  if (p.dynamic) return p.dynamic();
+  return p.text.replace(/\{(\w+)\}/g, (_, k) => ((v.params || {})[k] || "").trim() || "…");
+}
+const FIELD_BY_ID = {};
+STEPS.forEach(s => s.fields.forEach(f => (f.fields || [f]).forEach(x => x.id && (FIELD_BY_ID[x.id] = x))));
+const pv = id => presetValue(FIELD_BY_ID[id]);
+const txt = id => String(S[id] ?? "").trim();
+const validFileNo = v => /^\d{2}\/\d{6}$/.test(v);
+
+/* ---------------- DOM helpers ---------------- */
+function h(tag, attrs, kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "class") el.className = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of [].concat(kids ?? [])) if (c != null && c !== false) el.append(c.nodeType ? c : String(c));
+  return el;
+}
+const SVGNS = "http://www.w3.org/2000/svg";
+function s(tag, attrs, kids) {
+  const el = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) el.setAttribute(k, v);
+  for (const c of [].concat(kids ?? [])) if (c != null) el.append(c.nodeType ? c : String(c));
+  return el;
+}
+function autosize(t) { t.style.height = "auto"; t.style.height = Math.max(92, t.scrollHeight + 2) + "px"; }
+
+/* ---------------- Field renderers ---------------- */
+function textInput(f) {
+  const id = "f-" + f.id;
+  const inp = h("input", { type: "text", id, value: S[f.id] ?? "", inputmode: f.inputmode, placeholder: f.placeholder, class: f.mono ? "mono" : null, autocomplete: "off",
+    oninput: e => { S[f.id] = e.target.value; save(); } });
+  return h("div", { class: "field" }, [h("label", { class: "label", for: id }, f.label), inp, f.hint && h("div", { class: "hint" }, f.hint)]);
+}
+function dateInput(f) {
+  const id = "f-" + f.id;
+  return h("div", { class: "field" }, [h("label", { class: "label", for: id }, f.label),
+    h("input", { type: "date", id, value: S[f.id] || "", oninput: e => { S[f.id] = e.target.value; save(); } })]);
+}
+function fileNoInput(f) {
+  const id = "f-" + f.id;
+  const err = h("div", { class: "err", hidden: true }, "Use the format xx/xxxxxx (2 digits, slash, 6 digits).");
+  const inp = h("input", { type: "text", id, class: "mono", value: S[f.id] || "", inputmode: "numeric", placeholder: "xx/xxxxxx", maxlength: 9, autocomplete: "off",
+    oninput: e => {
+      const d = e.target.value.replace(/\D/g, "").slice(0, 8);
+      const v = d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d;
+      e.target.value = v; S[f.id] = v; save();
+      if (validFileNo(v) || !v) { inp.classList.remove("invalid"); err.hidden = true; }
+    },
+    onblur: e => { const v = e.target.value; const bad = v && !validFileNo(v); inp.classList.toggle("invalid", !!bad); err.hidden = !bad; } });
+  inp.dataset.fileno = "1";
+  return h("div", { class: "field" }, [h("label", { class: "label", for: id }, f.label), inp, h("div", { class: "hint" }, f.hint), err]);
+}
+function textArea(f) {
+  const id = "f-" + f.id;
+  const t = h("textarea", { id, rows: 3, oninput: e => { S[f.id] = e.target.value; save(); autosize(e.target); } });
+  t.value = S[f.id] || "";
+  requestAnimationFrame(() => autosize(t));
+  return h("div", { class: "field" }, [h("label", { class: "label", for: id }, f.label), t]);
+}
+function chip(label, on, onclick) {
+  return h("button", { type: "button", class: "chip" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false", onclick }, [h("span", { class: "box", "aria-hidden": "true" }), label]);
+}
+function choiceField(f, multi) {
+  const lid = "l-" + f.id;
+  const group = h("div", { class: "chips" + (f.vertical ? " vertical" : ""), role: "group", "aria-labelledby": lid });
+  const kids = [h("div", { class: "label", id: lid }, f.label), group];
+  for (const o of f.options) {
+    const on = multi ? has(f.id, o) : S[f.id] === o;
+    group.append(chip(o, on, () => {
+      if (multi) { const a = new Set(S[f.id] || []); a.has(o) ? a.delete(o) : a.add(o); S[f.id] = f.options.filter(x => a.has(x)); }
+      else S[f.id] = S[f.id] === o ? null : o;
+      save(); renderStep();
+    }));
+    const ex = f.extras && f.extras[o];
+    if (ex && on) {
+      const xid = "f-" + ex.id;
+      const inp = h("input", { type: "text", id: xid, value: S[ex.id] || "", placeholder: ex.placeholder, inputmode: ex.inputmode, "aria-label": o + ": " + ex.placeholder,
+        oninput: e => { S[ex.id] = e.target.value; save(); } });
+      if (f.vertical) group.append(h("div", { class: "extra" }, inp));
+      else kids.push(h("div", { class: "extra" }, inp));
+    }
+  }
+  return h("div", { class: "field" }, kids);
+}
+function rowsField(f) {
+  return h("div", { class: "inline-group" }, f.rows.map(r => {
+    const lid = "l-" + r.id;
+    return h("div", { class: "inline-row" }, [
+      h("div", { class: "label", id: lid }, r.label),
+      h("div", { class: "chips", role: "group", "aria-labelledby": lid }, r.options.map(o =>
+        chip(o, S[r.id] === o, () => { S[r.id] = S[r.id] === o ? null : o; save(); renderStep(); })))
+    ]);
+  }));
+}
+function toggleField(f) {
+  return h("div", { class: "field" }, h("div", { class: "chips" }, chip(f.label, !!S[f.id], () => { S[f.id] = !S[f.id]; save(); renderStep(); })));
+}
+function presetField(f) {
+  const v = S[f.id] || (S[f.id] = { sel: null, params: {}, custom: "" });
+  v.params = v.params || {};
+  const lid = "l-" + f.id;
+  const list = h("div", { class: "presets", role: "radiogroup", "aria-labelledby": lid });
+  const pick = sel => { v.sel = v.sel === sel ? null : sel; save(); renderStep(); };
+
+  f.presets.forEach((p, i) => {
+    const on = v.sel === i;
+    const shown = p.dynamic ? p.dynamic() : p.text.replace(/\{(\w+)\}/g, (_, k) => (v.params[k] || "").trim() || "__");
+    const disabled = p.dynamic && !shown;
+    const textEl = h("span", { class: "text" }, disabled ? p.empty : (p.note ? p.note + " — writes “" + shown + "”" : shown));
+    const card = h("div", { class: "preset" + (on ? " on" : "") + (disabled ? " disabled" : "") }, [
+      h("button", { type: "button", role: "radio", "aria-checked": on ? "true" : "false", disabled: disabled && !on, onclick: () => pick(i) }, [
+        h("span", { class: "dot", "aria-hidden": "true" }), h("span", { class: "name" }, p.name), textEl ])
+    ]);
+    if (on && p.params) {
+      card.append(h("div", { class: "params" }, p.params.map(pa => {
+        const pid = `f-${f.id}-${pa.key}`;
+        return h("label", { for: pid }, [pa.label, h("input", { type: "text", id: pid, value: v.params[pa.key] || "", placeholder: pa.placeholder, inputmode: pa.inputmode, class: "mono",
+          oninput: e => { v.params[pa.key] = e.target.value; save();
+            textEl.textContent = p.text.replace(/\{(\w+)\}/g, (_, k) => (v.params[k] || "").trim() || "__"); } })]);
+      })));
+    }
+    if (on && !disabled) {
+      card.append(h("div", { class: "tools" }, h("button", { type: "button", class: "linkbtn",
+        onclick: () => { v.custom = presetValue(f); v.sel = "custom"; save(); renderStep(); setTimeout(() => document.getElementById("f-" + f.id + "-custom")?.focus(), 0); } }, "Edit this wording")));
+    }
+    list.append(card);
+  });
+
+  const onC = v.sel === "custom";
+  const custom = h("div", { class: "preset custom" + (onC ? " on" : "") }, [
+    h("button", { type: "button", role: "radio", "aria-checked": onC ? "true" : "false", onclick: () => { pick("custom"); if (!onC) setTimeout(() => document.getElementById("f-" + f.id + "-custom")?.focus(), 0); } }, [
+      h("span", { class: "dot", "aria-hidden": "true" }), h("span", { class: "name" }, "Write my own"), h("span", { class: "text" }, "Type a different answer") ])
+  ]);
+  if (onC) {
+    const t = h("textarea", { id: "f-" + f.id + "-custom", rows: 3, "aria-label": f.label + " (your own text)", oninput: e => { v.custom = e.target.value; save(); autosize(e.target); } });
+    t.value = v.custom || "";
+    requestAnimationFrame(() => autosize(t));
+    custom.append(h("div", { class: "area" }, t));
+  }
+  list.append(custom);
+  return h("div", { class: "field" }, [h("div", { class: "label", id: lid }, f.label), list]);
+}
+
+/* ---------------- Tooth chart (FDI, operator's view: patient's right on the left) ---------------- */
+const TOOTH_NAMES = ["central incisor", "lateral incisor", "canine", "first premolar", "second premolar", "first molar", "second molar", "third molar"];
+const QUADS = { 1: "Upper right", 2: "Upper left", 3: "Lower left", 4: "Lower right" };
+const MD = [8.5, 6.6, 7.6, 7, 6.8, 10.2, 9.6, 9];          // mesiodistal size by position 1–8
+const toothName = n => n ? `${QUADS[n[0]]} ${TOOTH_NAMES[+n[1] - 1]}` : "";
+function archLayout(order, cx, cy, rx, ry, dir) {
+  const a0 = Math.PI * 0.955, a1 = Math.PI * 0.045, N = 800, pts = [];
+  let L = 0, prev = null;
+  for (let i = 0; i <= N; i++) {
+    const th = a0 + (a1 - a0) * i / N, p = { th, x: cx + rx * Math.cos(th), y: cy + dir * ry * Math.sin(th) };
+    if (prev) L += Math.hypot(p.x - prev.x, p.y - prev.y);
+    p.L = L; pts.push(p); prev = p;
+  }
+  const sizes = order.map(n => MD[+String(n)[1] - 1]);
+  const scale = L / sizes.reduce((a, b) => a + b, 0);
+  let acc = 0;
+  return order.map((n, i) => {
+    const target = (acc + sizes[i] / 2) * scale; acc += sizes[i];
+    const p = pts.find(q => q.L >= target) || pts[pts.length - 1];
+    const dx = -rx * Math.sin(p.th), dy = dir * ry * Math.cos(p.th);
+    let nx = cx - p.x, ny = cy - p.y; const nl = Math.hypot(nx, ny); nx /= nl; ny /= nl;
+    return { n: String(n), x: p.x, y: p.y, rot: Math.atan2(dy, dx) * 180 / Math.PI, len: sizes[i] * scale, nx, ny };
+  });
+}
+function toothChart(f) {
+  const W = 360, H = 468, cx = 180;
+  const upper = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
+  const lower = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+  const teeth = [...archLayout(upper, cx, 214, 146, 170, -1), ...archLayout(lower, cx, 254, 146, 170, 1)];
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart", role: "group", "aria-label": "Dental chart, FDI numbering" });
+  svg.append(s("line", { x1: cx, y1: 18, x2: cx, y2: H - 10, class: "mid" }));
+  svg.append(s("text", { x: 20, y: 236, class: "side" }, "R"), s("text", { x: W - 20, y: 236, class: "side" }, "L"));
+  const sel = S[f.id] || "";
+  svg.append(s("text", { x: cx, y: 230, class: "big" + (sel ? "" : " empty") }, sel || "—"));
+  svg.append(s("text", { x: cx, y: 252, class: "cap" }, sel ? toothName(sel) : "Tap a tooth"));
+  for (const t of teeth) {
+    const pos = +t.n[1], w = t.len * 0.86;
+    const depth = pos <= 2 ? w * 0.78 : pos === 3 ? w * 0.95 : pos <= 5 ? w * 1.18 : w * 1.02;
+    const r = pos <= 3 ? Math.min(w, depth) * 0.48 : pos <= 5 ? w * 0.45 : w * 0.3;
+    const g = s("g", { class: "t" + (sel === t.n ? " sel" : ""), tabindex: 0, role: "button", "aria-pressed": sel === t.n ? "true" : "false", "aria-label": `Tooth ${t.n}, ${toothName(t.n)}` });
+    g.append(s("circle", { class: "hit", cx: t.x, cy: t.y, r: Math.max(w, depth) / 2 + 4 }));
+    g.append(s("rect", { class: "shape", x: -w / 2, y: -depth / 2, width: w, height: depth, rx: r, ry: r, transform: `translate(${t.x.toFixed(1)} ${t.y.toFixed(1)}) rotate(${t.rot.toFixed(1)})` }));
+    const off = depth / 2 + 11;
+    g.append(s("text", { class: "num", x: (t.x + t.nx * off).toFixed(1), y: (t.y + t.ny * off).toFixed(1) }, t.n));
+    const choose = () => { S[f.id] = S[f.id] === t.n ? "" : t.n; save(); renderStep(); document.querySelector(`.chart .t[aria-label^="Tooth ${t.n},"]`)?.focus(); };
+    g.addEventListener("click", choose);
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(); } });
+    svg.append(g);
+  }
+  return h("div", { class: "field" }, [h("div", { class: "label" }, f.label), h("div", { class: "chart-card" }, svg),
+    h("div", { class: "hint" }, "Operator's view: the patient's right is on the left of the chart.")]);
+}
+
+function renderField(f) {
+  if (f.showIf && !f.showIf()) return null;
+  switch (f.t) {
+    case "text": return textInput(f);
+    case "date": return dateInput(f);
+    case "fileno": return fileNoInput(f);
+    case "textarea": return textArea(f);
+    case "single": return choiceField(f, false);
+    case "multi": return choiceField(f, true);
+    case "rows": return rowsField(f);
+    case "toggle": return toggleField(f);
+    case "preset": return presetField(f);
+    case "tooth": return toothChart(f);
+    case "pair": return h("div", { class: "pair" }, f.fields.map(renderField));
+    case "heading": return h("div", { class: "sub-heading" }, f.text);
+  }
+}
+
+/* ---------------- Completion ---------------- */
+function leafFields(step) {
+  const out = [];
+  for (const f of step.fields) {
+    if (f.showIf && !f.showIf()) continue;
+    if (f.t === "pair") out.push(...f.fields);
+    else if (f.t === "rows") out.push(...f.rows.map(r => ({ ...r, t: "single" })));
+    else if (f.t !== "heading") out.push(f);
+  }
+  return out;
+}
+function answered(f) {
+  const v = S[f.id];
+  if (f.t === "preset") return !!presetValue(f);
+  if (f.t === "multi") return Array.isArray(v) && v.length > 0;
+  if (f.t === "toggle") return true;
+  return v != null && String(v).trim() !== "";
+}
+function stepStatus(step) {
+  const fs = leafFields(step), done = fs.filter(answered);
+  return { total: fs.length, done: done.length, missing: fs.filter(f => !answered(f)).map(f => f.label) };
+}
+
+/* ---------------- Screens ---------------- */
+const main = document.getElementById("main");
+function renderStep(scrollTop) {
+  const step = STEPS[S.step];
+  const y = window.scrollY;
+  main.replaceChildren();
+  main.append(h("div", { class: "eyebrow" }, step.num ? `Section ${step.num} of 14` : S.step === 0 ? "Start" : "Finish"));
+  main.append(h("h1", null, step.title));
+  if (step.intro) main.append(h("p", { class: "intro" }, step.intro));
+  else main.append(h("div", { style: "height:14px" }));
+  if (step.key === "review") main.append(reviewScreen());
+  else main.append(h("div", { class: "fields" }, step.fields.map(renderField)));
+  renderChrome();
+  window.scrollTo(0, scrollTop ? 0 : y);
+}
+function reviewScreen() {
+  const wrap = h("div", { class: "fields" });
+  const list = h("div", { class: "review" });
+  STEPS.slice(0, -1).forEach((st, i) => {
+    const r = stepStatus(st);
+    list.append(h("button", { type: "button", class: "rv", onclick: () => go(i) }, [
+      h("span", { class: "n" }, st.num || "–"),
+      h("span", { class: "tt" }, st.title),
+      h("span", { class: "count" + (r.done === r.total ? " full" : "") }, `${r.done}/${r.total}`),
+      h("span", { class: "missing" }, r.missing.length ? "Empty: " + r.missing.join(" · ") : "Complete")
+    ]));
+  });
+  wrap.append(h("div", { class: "field" }, [h("div", { class: "label" }, "Your answers"), list,
+    h("div", { class: "hint" }, "Empty fields keep their blank lines in the Word file, so you can still write on them by hand.")]));
+  wrap.append(h("div", { class: "note" }, "13. Clinical Case Documentation (radiographs) and 14. Evaluation Grid stay blank for you and your instructor to complete."));
+  const status = h("div", { class: "status", role: "status" });
+  const genBtn = h("button", { type: "button", class: "btn primary", id: "generate", onclick: () => generate(status, genBtn) }, "Download Word file");
+  const newBtn = h("button", { type: "button", class: "btn", id: "new-case", onclick: () => confirmNew(newBtn) }, "Start a new case");
+  wrap.append(h("div", { class: "gen-row" }, [genBtn, newBtn]), status);
+  return wrap;
+}
+function confirmNew(btn) {
+  if (btn.dataset.armed) {
+    const keep = { student: S.student, studentId: S.studentId };
+    S = Object.assign(freshState(), keep); save(); renderStep(true); return;
+  }
+  btn.dataset.armed = "1"; btn.textContent = "Tap again to clear this case";
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = "Start a new case"; } }, 4000);
+}
+
+function renderChrome() {
+  const prog = document.getElementById("progress");
+  prog.style.setProperty("--n", STEPS.length);
+  prog.replaceChildren(...STEPS.map((st, i) => h("button", { type: "button", class: i === S.step ? "current" : i < S.step ? "done" : "",
+    "aria-label": `Go to ${st.title}`, "aria-current": i === S.step ? "step" : null, onclick: () => go(i) })));
+  const back = document.getElementById("back"), next = document.getElementById("next");
+  back.disabled = S.step === 0;
+  const last = S.step === STEPS.length - 1;
+  next.hidden = last;
+  if (!last) next.replaceChildren("Next", h("span", { class: "sub" }, "· " + STEPS[S.step + 1].title));
+  back.style.flex = last ? "1" : "";
+}
+function canLeave() {
+  const fn = main.querySelector("[data-fileno]");
+  if (fn && fn.value && !validFileNo(fn.value)) {
+    fn.dispatchEvent(new Event("blur")); fn.focus(); fn.scrollIntoView({ block: "center" }); return false;
+  }
+  return true;
+}
+function go(i) {
+  if (i === S.step) return;
+  if (i > S.step && !canLeave()) return;
+  S.step = Math.max(0, Math.min(STEPS.length - 1, i)); save(); renderStep(true); closeSheet();
+}
+document.getElementById("back").onclick = () => go(S.step - 1);
+document.getElementById("next").onclick = () => go(S.step + 1);
+
+const sheet = document.getElementById("sheet");
+function openSheet() {
+  document.getElementById("sheet-list").replaceChildren(...STEPS.map((st, i) => {
+    const r = st.key === "review" ? null : stepStatus(st);
+    const pip = !r ? "" : r.done === 0 ? "" : r.done === r.total ? "full" : "part";
+    return h("li", null, h("button", { type: "button", class: i === S.step ? "cur" : "", onclick: () => go(i) }, [
+      h("span", { class: "n" }, st.num || ""), h("span", null, st.title), h("span", { class: "pip " + pip, "aria-hidden": "true" })]));
+  }));
+  sheet.hidden = false;
+  sheet.querySelector("button.cur")?.focus();
+}
+function closeSheet() { sheet.hidden = true; }
+document.getElementById("open-sections").onclick = openSheet;
+document.getElementById("close-sections").onclick = closeSheet;
+sheet.addEventListener("click", e => { if (e.target === sheet) closeSheet(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !sheet.hidden) closeSheet(); });
+
+/* ---------------- Word document filling ---------------- */
+const WNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const MCNS = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+const XMLNS = "http://www.w3.org/XML/1998/namespace";
+const CHECKED_NUM = { 1: 101, 2: 102, 3: 103, 4: 104, 6: 106 };   // checked-box twins added to numbering.xml
+const BOX = "□", CHECK = "☒";
+
+class Filler {
+  constructor(doc) { this.doc = doc; this.all = [...doc.getElementsByTagNameNS(WNS, "p")]; }
+  el(name) { return this.doc.createElementNS(WNS, "w:" + name); }
+  text(p) { return [...p.getElementsByTagNameNS(WNS, "t")].map(t => t.textContent).join("").replace(/\s+/g, " ").trim(); }
+  p(start, n = 0, exact = false) {
+    const m = this.all.filter(p => { const t = this.text(p); return exact ? t === start : t.startsWith(start); });
+    if (!m[n]) throw new Error("Template paragraph not found: " + start);
+    return m[n];
+  }
+  run(text, opts = {}) {
+    const r = this.el("r");
+    if (opts.u || opts.font || opts.b) {
+      const rp = this.el("rPr");
+      if (opts.font) { const f = this.el("rFonts"); for (const a of ["ascii", "hAnsi", "eastAsia", "cs"]) f.setAttributeNS(WNS, "w:" + a, opts.font); rp.append(f); }
+      if (opts.b) rp.append(this.el("b"));
+      if (opts.u) { const u = this.el("u"); u.setAttributeNS(WNS, "w:val", "single"); rp.append(u); }
+      r.append(rp);
+    }
+    String(text).split("\n").forEach((line, i) => {
+      if (i) r.append(this.el("br"));
+      const t = this.el("t"); t.setAttributeNS(XMLNS, "xml:space", "preserve"); t.textContent = line; r.append(t);
+    });
+    return r;
+  }
+  setFont(run, font) {
+    let rp = [...run.children].find(c => c.localName === "rPr");
+    if (!rp) { rp = this.el("rPr"); run.insertBefore(rp, run.firstChild); }
+    let f = [...rp.children].find(c => c.localName === "rFonts");
+    if (!f) { f = this.el("rFonts"); const rs = [...rp.children].find(c => c.localName === "rStyle"); rp.insertBefore(f, rs ? rs.nextSibling : rp.firstChild); }
+    for (const a of ["ascii", "hAnsi", "eastAsia", "cs"]) f.setAttributeNS(WNS, "w:" + a, font);
+  }
+  /* Tick the k-th inline box (□) of a paragraph. */
+  box(p, k) {
+    let count = 0;
+    for (const t of [...p.getElementsByTagNameNS(WNS, "t")]) {
+      const str = t.textContent;
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] !== BOX && str[i] !== CHECK) continue;
+        if (count++ !== k) continue;
+        const r = t.parentNode, before = str.slice(0, i), after = str.slice(i + 1);
+        const mk = s => { const c = r.cloneNode(true); const ct = c.getElementsByTagNameNS(WNS, "t")[0]; ct.textContent = s; ct.setAttributeNS(XMLNS, "xml:space", "preserve"); return c; };
+        if (before) r.parentNode.insertBefore(mk(before), r);
+        const b = mk(CHECK); this.setFont(b, "MS Gothic"); r.parentNode.insertBefore(b, r);
+        if (after) { t.textContent = after; t.setAttributeNS(XMLNS, "xml:space", "preserve"); } else r.remove();
+        return;
+      }
+    }
+    throw new Error(`Box ${k} not found in: ${this.text(p)}`);
+  }
+  pick(p, options, value, offset = 0) { const i = options.indexOf(value); if (i >= 0) this.box(p, i + offset); }
+  picks(p, options, values, offset = 0) { for (const v of values || []) this.pick(p, options, v, offset); }
+  /* Tick a list item whose bullet is the box (numbering-based). */
+  listCheck(p) {
+    const num = p.getElementsByTagNameNS(WNS, "numId")[0];
+    const id = num && num.getAttributeNS(WNS, "val");
+    if (!CHECKED_NUM[id]) throw new Error("Not a checkbox list item: " + this.text(p));
+    num.setAttributeNS(WNS, "w:val", String(CHECKED_NUM[id]));
+  }
+  /* Fill underlined-tab blanks (_____) of a paragraph, in order. */
+  blanks(p, values) {
+    const runs = [...p.children].filter(c => c.localName === "r");
+    const isBlank = r => { const kids = [...r.children].filter(c => c.localName !== "rPr"); return kids.length === 1 && kids[0].localName === "tab" && r.getElementsByTagNameNS(WNS, "u").length; };
+    const groups = [];
+    runs.forEach((r, i) => { if (isBlank(r)) { if (i > 0 && isBlank(runs[i - 1])) groups[groups.length - 1].push(r); else groups.push([r]); } });
+    values.forEach((v, i) => {
+      if (v == null || String(v).trim() === "" || !groups[i]) return;
+      const g = groups[i], nr = g[0].cloneNode(true);
+      [...nr.children].forEach(c => { if (c.localName !== "rPr") c.remove(); });
+      const t = this.el("t"); t.setAttributeNS(XMLNS, "xml:space", "preserve"); t.textContent = " " + String(v).trim() + " "; nr.append(t);
+      p.insertBefore(nr, g[0]); g.forEach(r => r.remove());
+    });
+  }
+  /* Replace the ruled writing lines that follow a label with the answer text. */
+  lines(label, value) {
+    if (!value) return;
+    let q = label.nextElementSibling;
+    for (let i = 0; i < 4 && q; i++, q = q.nextElementSibling) {
+      if (q.localName === "p" && q.getElementsByTagNameNS(MCNS, "AlternateContent").length) {
+        [...q.children].filter(c => c.localName === "r" && c.getElementsByTagNameNS(MCNS, "AlternateContent").length).forEach(r => r.remove());
+        q.append(this.run(value));
+        return;
+      }
+    }
+    throw new Error("No writing lines after: " + this.text(label));
+  }
+  append(p, text, opts) {
+    const r = this.run(text, opts);
+    const last = [...p.children].filter(c => c.localName === "r").pop();
+    const rp = last && [...last.children].find(c => c.localName === "rPr");
+    if (!opts && rp) r.insertBefore(rp.cloneNode(true), r.firstChild);
+    p.append(r);
+  }
+}
+
+function fmtDate(iso) { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; }
+
+function fillDocument(doc) {
+  const F = new Filler(doc);
+  // Cover page
+  for (const [label, id] of [["Student Full Name", "student"], ["Student ID", "studentId"]]) {
+    const ts = F.p(label, 0, true).nextElementSibling.getElementsByTagNameNS(WNS, "t");
+    if (txt(id) && ts.length) ts[ts.length - 1].textContent = txt(id);
+  }
+  // Case No / Date
+  const cd = F.p("Case No");
+  [...cd.children].filter(c => c.localName === "r").forEach(r => r.remove());
+  // One line: Case No on the left, Date against the right margin.
+  let ppr = [...cd.children].find(c => c.localName === "pPr");
+  if (!ppr) { ppr = F.el("pPr"); cd.insertBefore(ppr, cd.firstChild); }
+  const tabs = F.el("tabs"), tab = F.el("tab");
+  tab.setAttributeNS(WNS, "w:val", "right"); tab.setAttributeNS(WNS, "w:pos", "9900");
+  tabs.append(tab); ppr.insertBefore(tabs, ppr.firstChild);
+  cd.append(F.run("Case No: "), F.run(txt("caseNo") ? ` ${txt("caseNo")} ` : "            ", { u: true }));
+  const tb = F.el("r"); tb.append(F.el("tab")); cd.append(tb);
+  cd.append(F.run("Date: "), F.run(S.date ? ` ${fmtDate(S.date)} ` : "      /      /      ", { u: true }));
+  if (txt("tooth")) F.blanks(F.p("Tooth:"), [txt("tooth")]);
+
+  // 1. Patient information
+  F.blanks(F.p("Full Name"), [txt("patientName"), txt("fileNo"), txt("age")]);
+  F.pick(F.p("Sex:"), ["Male", "Female"], S.sex);
+  F.lines(F.p("Medical History"), pv("medHistory"));
+
+  // 2. History
+  F.lines(F.p("Chief complaint:"), pv("chiefComplaint"));
+  F.lines(F.p("Dental history:"), txt("dentalHistory"));
+  if (has("painOnset", "Spontaneous")) F.listCheck(F.p("Spontaneous", 0, true));
+  const prov = F.p("Provoked:");
+  if (has("painOnset", "Provoked")) {
+    F.listCheck(prov);
+    F.picks(prov, ["Cold", "Heat", "Mastication", "Other"], S.provoked);
+    if (has("provoked", "Other")) F.blanks(prov, [txt("provokedOther")]);
+  }
+  F.pick(F.p("Duration:"), ["Brief (<30 seconds)", "Prolonged (>30 seconds)"], S.duration);
+  const ch = F.p("Character:");
+  F.picks(ch, ["Throbbing", "Continuous", "Sharp", "Nocturnal", "Other"], S.character);
+  if (has("character", "Other")) F.blanks(ch, [txt("characterOther")]);
+  const loc = F.p("Localized");
+  if (S.location === "Localized") F.listCheck(loc);
+  if (S.location === "Diffuse") F.box(loc, 0);
+  F.lines(F.p("Factors relieving pain"), pv("relieving"));
+  F.lines(F.p("Medications taken during painful episodes"), pv("painMeds"));
+
+  // 3. Clinical examination
+  const rows = [["Facial symmetry", "eoSymmetry"], ["Cutaneous sinus tract", "eoSinus"], ["Swelling:", "eoSwelling"],
+    ["Swelling / Vestibular", "ioSwelling"], ["Sinus tract:", "ioSinus"], ["Periodontal pocket", "ioPocket"], ["Erosion / Abrasion", "ioWear"],
+    ["Caries / Cavity", "ioCaries"], ["Restoration □", "ioResto"],
+    ["Percussion", "tPerc"], ["Mobility", "tMob"], ["Palpation", "tPalp"], ["Cavity test", "tCavity"], ["Selective anesthesia test", "tSelAnes"], ["Bite test", "tBite"]];
+  for (const [label, id] of rows) {
+    F.pick(F.p(label), id.startsWith("t") ? NP : PA, S[id]);
+  }
+  F.pick(F.p("Cold:"), ["Negative", "Positive normal response", "Positive prolonged and increased response"], S.tCold);
+  F.lines(F.p("Tissue condition"), pv("tissue"));
+  F.lines(F.p("Other observations", 0), pv("eoOther"));
+
+  // 4. Radiographic examination
+  const pa = F.p("Periapical / Number of angulations");
+  if (has("rxType", "Periapical")) { F.listCheck(pa); F.blanks(pa, [txt("rxAngulations")]); }
+  if (has("rxType", "CBCT")) F.listCheck(F.p("CBCT", 0, true));
+  if (has("rxType", "Bitewing")) F.listCheck(F.p("Bitewing", 0, true));
+  F.lines(F.p("Radiographic observations"), txt("rxCoronal"));
+  if (has("rxRadicular", "Narrowing / Calcification")) F.listCheck(F.p("Narrowing / Calcification"));
+  if (has("rxRadicular", "Resorption")) { const p = F.p("Resorption (specify)"); F.listCheck(p); F.blanks(p, [txt("rxResorption")]); }
+  if (has("rxRadicular", "Open apex")) F.listCheck(F.p("Open apex"));
+  if (has("rxRadicular", "Other observations")) { const p = F.p("Other observations", 1); F.listCheck(p); F.blanks(p, [txt("rxRadOther")]); }
+  if (has("rxRadicular", "Observations in case of previous endodontic treatment")) {
+    const p = F.p("Observations in case of previous endodontic treatment"); F.listCheck(p);
+    if (txt("rxPrevTx")) F.append(p, ": " + txt("rxPrevTx"));
+  }
+  for (const l of ["Periapical radiolucency", "Periapical radiopacity", "Lateral radicular lesion"]) if (has("rxLesions", l)) F.listCheck(F.p(l, 0, true));
+  if (has("rxLesions", "Other observations")) { const p = F.p("Other observations", 2); F.listCheck(p); F.blanks(p, [txt("rxLesionOther")]); }
+
+  // 5–6. Diagnosis
+  if (S.pulpal) F.listCheck(F.p(S.pulpal, 0, true));
+  if (S.periradicular) F.listCheck(F.p(S.periradicular, 0, true));
+  F.lines(F.p("Final diagnosis"), pv("finalDx"));
+
+  // 7. Treatment plan
+  if (S.txPlan) F.listCheck(F.p(S.txPlan, 0, true));
+  F.lines(F.p("Treatment alternatives:"), txt("txAlternatives"));
+  F.append(F.p("Patient consent obtained"), " " + (S.consent ? CHECK : BOX), { font: "MS Gothic" });
+  F.lines(F.p("Specify if the patient insists"), pv("insists"));
+
+  // 8. Clinical procedure
+  F.lines(F.p("Anesthesia technique"), pv("anesthesia"));
+  F.lines(F.p("Isolation technique"), pv("isolation"));
+  F.lines(F.p("Access cavity preparation"), txt("access"));
+  F.lines(F.p("Canal negotiation"), txt("negotiation"));
+  F.lines(F.p("Instrumentation / Canal shaping"), txt("shaping"));
+  F.lines(F.p("Irrigation and intracanal"), pv("irrigation"));
+  F.lines(F.p("Obturation technique"), pv("obturation"));
+  const sealer = F.p("Sealer:");
+  if (pv("sealer")) { F.blanks(sealer, [pv("sealer")]); const ind = sealer.getElementsByTagNameNS(WNS, "ind")[0]; ind && ind.removeAttributeNS(WNS, "right"); }
+  if (has("restoration", "Temporary restoration")) F.box(F.p("Temporary restoration"), 0);
+  if (has("restoration", "Permanent restoration")) F.box(F.p("Permanent restoration"), 0);
+
+  // 9–12
+  F.lines(F.p("Challenges encountered"), txt("challenges"));
+  F.lines(F.p("Complications - Management"), txt("complications"));
+  F.lines(F.p("Pain management"), pv("painMgmt"));
+  F.lines(F.p("Postoperative follow-up schedule"), txt("followSchedule"));
+  F.lines(F.p("Healing status"), txt("healing"));
+  F.lines(F.p("Future interventions"), txt("future"));
+  F.lines(F.p("Key points learned"), txt("keyPoints"));
+  F.lines(F.p("Skills and knowledge acquired"), txt("skills"));
+}
+
+function b64ToBytes(b64) { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+async function buildDocx() {
+  if (typeof JSZip === "undefined") throw new Error("The document library did not load. Check your connection and reload the page.");
+  const zip = await JSZip.loadAsync(b64ToBytes(TEMPLATE_B64));
+  const xml = await zip.file("word/document.xml").async("string");
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) throw new Error("The logbook template could not be read.");
+  fillDocument(doc);
+  let out = new XMLSerializer().serializeToString(doc);
+  if (!out.startsWith("<?xml")) out = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + out;
+  zip.file("word/document.xml", out);
+  return zip.generateAsync({ type: "blob", compression: "DEFLATE", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+}
+function fileName() {
+  const parts = ["Endo logbook"];
+  if (txt("caseNo")) parts.push("Case " + txt("caseNo"));
+  if (txt("tooth")) parts.push("Tooth " + txt("tooth"));
+  if (S.date) parts.push(fmtDate(S.date).replace(/\//g, "-"));
+  return parts.join(" - ").replace(/[\\/:*?"<>|]/g, "-") + ".docx";
+}
+async function generate(status, btn) {
+  status.className = "status"; status.textContent = "Building your logbook…"; btn.disabled = true;
+  try {
+    const blob = await buildDocx();
+    const name = fileName();
+    const downloads = window.claude?.use ? await window.claude.use("downloads") : null;
+    if (downloads) {
+      try { await downloads.save({ filename: name, data: blob }); status.className = "status ok"; status.textContent = "Saved " + name; }
+      catch (e) {
+        status.className = "status bad";
+        status.textContent = e && e.code === "declined" ? "Download cancelled." : "The download could not start here (" + (e && (e.code || e.message)) + ").";
+      }
+    } else {
+      const a = h("a", { href: URL.createObjectURL(blob), download: name });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      status.className = "status"; status.textContent = "Download started: " + name + ". If no file appears, open this page in Safari or Chrome and try again.";
+    }
+  } catch (e) {
+    console.error(e);
+    status.className = "status bad"; status.textContent = e.message || String(e);
+  } finally { btn.disabled = false; }
+}
+window.__endo = { buildDocx, get state() { return S; }, set state(v) { S = v; renderStep(true); } };
+
+renderStep(true);
+</script>
