@@ -35,7 +35,7 @@
   --accent: #52b9c2; --accent-ink: #061517; --accent-soft: #163a3f; --tooth: #1d2e35; --warn: #f0a35e; --warn-soft: #3a2817; --ok: #6fcf97;
   color-scheme: dark;
 }
-* { box-sizing: border-box; }
+* { box-sizing: border-box; touch-action: manipulation; }  /* no double-tap zoom; pinch zoom still works */
 [hidden] { display: none !important; }
 html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; -webkit-tap-highlight-color: transparent; }
