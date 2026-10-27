@@ -120,6 +120,12 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.45; }
 .preset.custom .area { padding: 0 14px 14px; }
 .preset.disabled > button { cursor: default; opacity: .6; }
 
+/* Radiograph photos */
+.xray-img { display: block; width: 100%; max-height: 320px; object-fit: contain; background: #000; border-radius: 8px; border: 1px solid var(--line); }
+.xray-empty { display: grid; place-items: center; height: 120px; border: 1.5px dashed var(--line-strong); border-radius: 8px; color: var(--muted); font-size: 14px; background: var(--surface); }
+.xray-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
 /* Tooth chart */
 .chart-card { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 10px 8px 4px; }
 .chart { width: 100%; max-width: 440px; display: block; margin: 0 auto; }
@@ -233,6 +239,13 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.45; }
 const TEMPLATE_B64 = "__TEMPLATE_B64__";
 
 /* ---------------- Schema ---------------- */
+const XRAYS = [
+  { id: "xPre", label: "Preoperative radiograph" },
+  { id: "xWL", label: "Working-length determination radiograph" },
+  { id: "xMC", label: "Master cone radiograph(s)" },
+  { id: "xPost", label: "Postoperative radiograph" },
+  { id: "xFollow", label: "Follow-up radiograph" }
+];
 const PA = ["Present", "Absent"], NP = ["Negative", "Positive"];
 const X_PRESET = [{ name: "X", text: "X", note: "Nothing to report" }];
 const NA_PRESET = [{ name: "Not applicable", text: "Not applicable" }];
@@ -364,6 +377,9 @@ const STEPS = [
   { key: "reflections", num: "12", title: "Reflections / Learning", fields: [
     { t: "textarea", id: "keyPoints", label: "Key points learned from the case" },
     { t: "textarea", id: "skills", label: "Skills and knowledge acquired" } ] },
+
+  { key: "docs", num: "13", title: "Clinical Case Documentation", intro: "Choose a photo for each radiograph. Skip any you don't have yet: its box stays empty in the Word file.",
+    fields: XRAYS.map(x => ({ t: "xray", ...x })) },
 
   { key: "review", num: "", title: "Review and generate", fields: [] }
 ];
@@ -613,6 +629,7 @@ function renderField(f) {
     case "toggle": return toggleField(f);
     case "preset": return presetField(f);
     case "tooth": return toothChart(f);
+    case "xray": return xrayField(f);
     case "pair": return h("div", { class: "pair" }, f.fields.map(renderField));
     case "heading": return h("div", { class: "sub-heading" }, f.text);
   }
@@ -630,6 +647,7 @@ function leafFields(step) {
   return out;
 }
 function answered(f) {
+  if (f.t === "xray") return !!IMAGES[f.id];
   const v = S[f.id];
   if (f.t === "preset") return !!presetValue(f);
   if (f.t === "multi") return Array.isArray(v) && v.length > 0;
@@ -670,17 +688,124 @@ function reviewScreen() {
   });
   wrap.append(h("div", { class: "field" }, [h("div", { class: "label" }, "Your answers"), list,
     h("div", { class: "hint" }, "Empty fields keep their blank lines in the Word file, so you can still write on them by hand.")]));
-  wrap.append(h("div", { class: "note" }, "13. Clinical Case Documentation (radiographs) and 14. Evaluation Grid stay blank for you and your instructor to complete."));
+  wrap.append(h("div", { class: "note" }, "14. Evaluation Grid stays blank for your instructor to complete."));
   const status = h("div", { class: "status", role: "status" });
   const genBtn = h("button", { type: "button", class: "btn primary", id: "generate", onclick: () => generate(status, genBtn) }, "Download Word file");
   const newBtn = h("button", { type: "button", class: "btn", id: "new-case", onclick: () => confirmNew(newBtn) }, "Start a new case");
   wrap.append(h("div", { class: "gen-row" }, [genBtn, newBtn]), status);
   return wrap;
 }
+/* ---------------- Radiograph photos (IndexedDB: too large for localStorage) ---------------- */
+const IMAGES = {};   // field id -> { blob, w, h, url }
+const IMG_DB = DRAFT_KEY.replace(".draft.v1", ".images");
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(IMG_DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("img");
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function idbRun(mode, fn) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction("img", mode); fn(tx.objectStore("img"));
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = tx.onabort = () => { db.close(); rej(tx.error); };
+  });
+}
+async function loadImages() {
+  try {
+    const found = {};
+    await idbRun("readonly", st => { st.openCursor().onsuccess = e => { const c = e.target.result; if (c) { found[c.key] = c.value; c.continue(); } }; });
+    for (const [id, rec] of Object.entries(found)) if (rec && rec.blob) setImage(id, rec, false);
+  } catch (e) {}
+}
+function setImage(id, rec, persist) {
+  if (IMAGES[id]) URL.revokeObjectURL(IMAGES[id].url);
+  IMAGES[id] = { blob: rec.blob, w: rec.w, h: rec.h, url: URL.createObjectURL(rec.blob) };
+  if (persist) idbRun("readwrite", st => st.put({ blob: rec.blob, w: rec.w, h: rec.h }, id)).catch(() => {});
+}
+function removeImage(id) {
+  if (IMAGES[id]) URL.revokeObjectURL(IMAGES[id].url);
+  delete IMAGES[id];
+  idbRun("readwrite", st => st.delete(id)).catch(() => {});
+}
+function clearImages() {
+  for (const id of Object.keys(IMAGES)) { URL.revokeObjectURL(IMAGES[id].url); delete IMAGES[id]; }
+  idbRun("readwrite", st => st.clear()).catch(() => {});
+}
+/* Shrink to at most 1600 px on the long side and re-encode as JPEG, so the Word file stays small. */
+async function preparePhoto(file) {
+  const src = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("This file couldn't be opened as a photo. Choose a JPEG or PNG image.")); i.src = src; });
+    const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * k)), hgt = Math.max(1, Math.round(img.naturalHeight * k));
+    const c = document.createElement("canvas"); c.width = w; c.height = hgt;
+    const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, hgt); ctx.drawImage(img, 0, 0, w, hgt);
+    const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.86));
+    if (!blob) throw new Error("The photo couldn't be processed. Try another one.");
+    return { blob, w, h: hgt };
+  } finally { URL.revokeObjectURL(src); }
+}
+function xrayField(f) {
+  const im = IMAGES[f.id], inputId = "f-" + f.id;
+  const err = h("div", { class: "err", role: "alert", hidden: true });
+  const input = h("input", { type: "file", id: inputId, accept: "image/*", class: "visually-hidden", tabindex: -1, "aria-hidden": "true",
+    onchange: async e => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      err.hidden = true;
+      try { setImage(f.id, await preparePhoto(file), true); renderStep(); }
+      catch (x) { err.textContent = x.message; err.hidden = false; }
+    } });
+  return h("div", { class: "field" }, [
+    h("div", { class: "label" }, f.label),
+    im ? h("img", { src: im.url, alt: f.label, class: "xray-img" }) : h("div", { class: "xray-empty" }, "No photo yet"),
+    h("div", { class: "xray-actions" }, [
+      input,
+      h("button", { type: "button", class: "btn" + (im ? "" : " primary"), onclick: () => input.click() }, im ? "Replace photo" : "Choose photo"),
+      im && h("button", { type: "button", class: "btn", onclick: () => { removeImage(f.id); renderStep(); } }, "Remove")
+    ]),
+    err
+  ]);
+}
+/* Put each photo in the empty table cell under its title in section 13. */
+async function addXrays(zip, doc) {
+  const used = XRAYS.filter(x => IMAGES[x.id]);
+  if (!used.length) return;
+  const F = new Filler(doc);
+  let rels = await zip.file("word/_rels/document.xml.rels").async("string");
+  let types = await zip.file("[Content_Types].xml").async("string");
+  if (!/Extension="jpeg"/i.test(types)) types = types.replace('<Default Extension="xml"', '<Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="xml"');
+  const NS = `xmlns:w="${WNS}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
+  const MAX_W = 2860000, MAX_H = 2340000;   // EMU: cell width (8.5 cm) less a margin, 6.5 cm tall
+  let n = 0;
+  for (const x of used) {
+    n++;
+    const im = IMAGES[x.id], rid = "rIdXray" + n, name = `xray${n}.jpeg`;
+    zip.file("word/media/" + name, await im.blob.arrayBuffer(), { createFolders: false });
+    rels = rels.replace("</Relationships>", `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/></Relationships>`);
+    const tc = F.p(x.label, 0, true).parentNode, tr = tc.parentNode;
+    const col = [...tr.children].filter(c => c.localName === "tc").indexOf(tc);
+    const cell = [...tr.nextElementSibling.children].filter(c => c.localName === "tc")[col];
+    const p = [...cell.children].find(c => c.localName === "p");
+    const ppr = [...p.children].find(c => c.localName === "pPr");
+    const sp = ppr && [...ppr.children].find(c => c.localName === "spacing");
+    if (sp) { sp.setAttributeNS(WNS, "w:before", "80"); sp.setAttributeNS(WNS, "w:after", "80"); }
+    if (ppr) { const jc = F.el("jc"); jc.setAttributeNS(WNS, "w:val", "center"); const rp = [...ppr.children].find(c => c.localName === "rPr"); ppr.insertBefore(jc, rp || null); }
+    const k = Math.min(MAX_W / im.w, MAX_H / im.h), cx = Math.round(im.w * k), cy = Math.round(im.h * k), id = 9000 + n;
+    const xml = `<w:r ${NS}><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="${x.label}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+    p.append(doc.importNode(new DOMParser().parseFromString(xml, "application/xml").documentElement, true));
+  }
+  zip.file("word/_rels/document.xml.rels", rels);
+  zip.file("[Content_Types].xml", types);
+}
+
 function confirmNew(btn) {
   if (btn.dataset.armed) {
     const keep = { student: S.student, studentId: S.studentId };
-    S = Object.assign(freshState(), keep); save(); renderStep(true); return;
+    S = Object.assign(freshState(), keep); save(); clearImages(); renderStep(true); return;
   }
   btn.dataset.armed = "1"; btn.textContent = "Tap again to clear this case";
   setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = "Start a new case"; } }, 4000);
@@ -951,6 +1076,7 @@ async function buildDocx() {
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   if (doc.getElementsByTagName("parsererror").length) throw new Error("The logbook template could not be read.");
   fillDocument(doc);
+  await addXrays(zip, doc);
   let out = new XMLSerializer().serializeToString(doc);
   if (!out.startsWith("<?xml")) out = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + out;
   zip.file("word/document.xml", out);
@@ -986,6 +1112,7 @@ async function generate(status, btn) {
     status.className = "status bad"; status.textContent = e.message || String(e);
   } finally { btn.disabled = false; }
 }
+loadImages().then(() => { if (!document.getElementById("main").closest("[hidden]")) renderStep(); });
 window.__endo = { buildDocx, get state() { return S; }, set state(v) { S = v; renderStep(true); } };
 
 /* ---------------- PIN lock (asked once per device) ---------------- */
