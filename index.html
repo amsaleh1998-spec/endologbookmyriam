@@ -166,6 +166,15 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.45; }
 .btn .sub { min-width: 0; font-weight: 500; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Sections sheet */
+/* PIN lock */
+.lock { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; align-content: center; padding-block: 32px; }
+.lock form { width: 100%; max-width: 340px; display: grid; gap: 14px; text-align: center; }
+.lock h1 { margin: 0; }
+.lock p { margin: 0; color: var(--muted); }
+.lock input { width: 100%; min-width: 0; font-family: var(--font-data); font-size: 28px; letter-spacing: .5em; text-align: center; padding-left: .5em; min-height: 58px; }
+.lock .btn { width: 100%; }
+.lock .err { min-height: 1.4em; }
+
 .sheet { position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / .35); display: flex; justify-content: center; align-items: flex-end; }
 .sheet .panel { background: var(--surface); width: 100%; max-width: 680px; max-height: 82vh; overflow: auto; border-radius: 16px 16px 0 0; padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 .sheet h2 { font-size: 16px; margin: 4px 0 10px; display: flex; justify-content: space-between; align-items: center; }
@@ -181,7 +190,19 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.45; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 </style>
 
-<header class="top gutter">
+<section class="lock gutter" id="lock" hidden>
+  <form id="lock-form" autocomplete="off">
+    <div class="brand"><b>Endo</b> Logbook</div>
+    <h1>Enter PIN</h1>
+    <p>Enter the 4-digit PIN to open the logbook.</p>
+    <label for="pin" class="label" hidden>PIN</label>
+    <input type="password" id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-describedby="pin-err">
+    <button type="submit" class="btn primary">Unlock</button>
+    <div class="err" id="pin-err" role="alert"></div>
+  </form>
+</section>
+
+<header class="top gutter" id="app-header" hidden>
   <div class="wrap">
     <div class="top-row">
       <div class="brand"><b>Endo</b> Logbook</div>
@@ -192,9 +213,9 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.45; }
   </div>
 </header>
 
-<main class="gutter"><div class="wrap" id="main"></div></main>
+<main class="gutter" id="app-main" hidden><div class="wrap" id="main"></div></main>
 
-<nav class="nav gutter" aria-label="Step navigation">
+<nav class="nav gutter" id="app-nav" aria-label="Step navigation" hidden>
   <div class="wrap">
     <button type="button" class="btn" id="back">Back</button>
     <button type="button" class="btn primary" id="next"></button>
@@ -968,7 +989,35 @@ async function generate(status, btn) {
 }
 window.__endo = { buildDocx, get state() { return S; }, set state(v) { S = v; renderStep(true); } };
 
-renderStep(true);
+/* ---------------- PIN lock (asked once per device) ---------------- */
+const PIN_HASH = "4221ced312823ae704b590399b68f989b203ce7dbcc68aecb99e1e2aab450312";   // SHA-256 of "endo-logbook-myriam:" + PIN
+const UNLOCK_KEY = "endoLogbookMyriam.unlocked.v1";
+async function pinHash(pin) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("endo-logbook-myriam:" + pin));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function isUnlocked() { try { return localStorage.getItem(UNLOCK_KEY) === PIN_HASH; } catch (e) { return false; } }
+function startApp() {
+  document.getElementById("lock").hidden = true;
+  for (const id of ["app-header", "app-main", "app-nav"]) document.getElementById(id).hidden = false;
+  renderStep(true);
+}
+function showLock() {
+  const lock = document.getElementById("lock"), pin = document.getElementById("pin"), err = document.getElementById("pin-err");
+  lock.hidden = false; pin.focus();
+  const check = async () => {
+    const v = pin.value.trim();
+    if (v.length < 4) { err.textContent = "Enter all 4 digits."; return; }
+    let ok = false;
+    try { ok = (await pinHash(v)) === PIN_HASH; } catch (e) { err.textContent = "This browser can't check the PIN. Open the page over https in Safari or Chrome."; return; }
+    if (!ok) { err.textContent = "Wrong PIN. Try again."; pin.value = ""; pin.focus(); return; }
+    try { localStorage.setItem(UNLOCK_KEY, PIN_HASH); } catch (e) {}
+    startApp();
+  };
+  pin.addEventListener("input", () => { pin.value = pin.value.replace(/\D/g, "").slice(0, 4); err.textContent = ""; if (pin.value.length === 4) check(); });
+  document.getElementById("lock-form").addEventListener("submit", e => { e.preventDefault(); check(); });
+}
+if (isUnlocked()) startApp(); else showLock();
 </script>
 
 </body></html>
