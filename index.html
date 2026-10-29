@@ -364,7 +364,7 @@ const STEPS = [
     { t: "preset", id: "sealer", label: "Sealer", presets: [
       { name: "Sealite™ Regular", text: "Sealite™ Regular, zinc oxide eugenol based (Acteon)" },
       { name: "K-Sealer Universal", text: "K-Sealer Universal, zinc oxide eugenol based (Rekita)" } ] },
-    { t: "multi", id: "restoration", label: "Restoration", options: ["Temporary restoration", "Permanent restoration"] } ] },
+    { t: "single", id: "restoration", label: "Restoration", options: ["Temporary restoration", "Permanent restoration"] } ] },
 
   { key: "challenges", num: "9", title: "Challenges – Complications", fields: [
     { t: "textarea", id: "challenges", label: "Challenges encountered – management" },
@@ -401,6 +401,7 @@ function freshState() {
 let S;
 try { S = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch (e) { S = null; }
 if (!S || typeof S !== "object") S = freshState();
+if (Array.isArray(S.restoration)) S.restoration = S.restoration[0] || null;
 for (const [id, was] of [["tissue", "X"], ["eoOther", "X"], ["insists", "X"], ["relieving", "Not applicable"], ["painMeds", "Not applicable"]]) {
   const v = S[id];
   if (!v || typeof v !== "object") continue;
@@ -1094,8 +1095,8 @@ function fillDocument(doc) {
   F.lines(F.p("Obturation technique"), pv("obturation"));
   const sealer = F.p("Sealer:");
   if (pv("sealer")) { F.blanks(sealer, [pv("sealer")]); const ind = sealer.getElementsByTagNameNS(WNS, "ind")[0]; ind && ind.removeAttributeNS(WNS, "right"); }
-  if (has("restoration", "Temporary restoration")) F.box(F.p("Temporary restoration"), 0);
-  if (has("restoration", "Permanent restoration")) F.box(F.p("Permanent restoration"), 0);
+  if (S.restoration === "Temporary restoration") F.box(F.p("Temporary restoration"), 0);
+  if (S.restoration === "Permanent restoration") F.box(F.p("Permanent restoration"), 0);
 
   // 9–12
   F.lines(F.p("Challenges encountered"), txt("challenges"));
