@@ -114,6 +114,9 @@ textarea { resize: vertical; min-height: 92px; line-height: 1.45; }
 .preset.on .text { color: var(--ink); }
 .preset .params { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 14px 12px 43px; align-items: end; }
 .preset .params label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.chips.quick .chip { min-height: 34px; padding: 4px 12px 4px 9px; font-size: 14px; }
+.preset .params .param-choice { flex-basis: 100%; display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+.preset .params .param-choice .chip { min-height: 36px; padding: 5px 12px 5px 9px; font-size: 14px; }
 .preset .params input { width: 8.5em; min-height: 40px; padding: 8px 10px; }
 .preset .tools { padding: 0 14px 12px 43px; }
 .linkbtn { background: none; border: 0; padding: 4px 0; color: var(--accent); font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
@@ -247,8 +250,6 @@ const XRAYS = [
   { id: "xFollow", label: "Follow-up radiograph" }
 ];
 const PA = ["Present", "Absent"], NP = ["Negative", "Positive"];
-const X_PRESET = [{ name: "X", text: "X", note: "Nothing to report" }];
-const NA_PRESET = [{ name: "Not applicable", text: "Not applicable" }];
 const has = (id, o) => (S[id] || []).includes(o);
 
 const STEPS = [
@@ -282,8 +283,8 @@ const STEPS = [
     { t: "multi", id: "character", label: "Character", options: ["Throbbing", "Continuous", "Sharp", "Nocturnal", "Other"],
       extras: { Other: { id: "characterOther", placeholder: "Other character" } } },
     { t: "single", id: "location", label: "Localized / diffuse", options: ["Localized", "Diffuse"] },
-    { t: "preset", id: "relieving", label: "Factors relieving pain", presets: NA_PRESET },
-    { t: "preset", id: "painMeds", label: "Medications taken during painful episodes", presets: NA_PRESET } ] },
+    { t: "textarea", id: "relieving", label: "Factors relieving pain" },
+    { t: "textarea", id: "painMeds", label: "Medications taken during painful episodes" } ] },
 
   { key: "clinical", num: "3", title: "Clinical Examination", fields: [
     { t: "heading", text: "Extraoral inspection" },
@@ -291,8 +292,8 @@ const STEPS = [
       { id: "eoSymmetry", label: "Facial symmetry", options: PA },
       { id: "eoSinus", label: "Cutaneous sinus tract", options: PA },
       { id: "eoSwelling", label: "Swelling", options: PA } ] },
-    { t: "preset", id: "tissue", label: "Tissue condition", presets: X_PRESET },
-    { t: "preset", id: "eoOther", label: "Other observations", presets: X_PRESET },
+    { t: "textarea", id: "tissue", label: "Tissue condition" },
+    { t: "textarea", id: "eoOther", label: "Other observations" },
     { t: "heading", text: "Intraoral inspection" },
     { t: "rows", rows: [
       { id: "ioSwelling", label: "Swelling / Vestibular obliteration", options: PA },
@@ -338,7 +339,7 @@ const STEPS = [
     { t: "single", id: "txPlan", label: "Treatment", vertical: true, options: ["Primary root canal treatment", "Endodontic retreatment", "Primary root canal treatment - vital pulp therapy"] },
     { t: "textarea", id: "txAlternatives", label: "Treatment alternatives" },
     { t: "toggle", id: "consent", label: "Patient consent obtained" },
-    { t: "preset", id: "insists", label: "Specify if the patient insists on retaining the tooth despite an unfavorable prognosis", presets: X_PRESET } ] },
+    { t: "textarea", id: "insists", label: "Specify if the patient insists on retaining the tooth despite an unfavorable prognosis" } ] },
 
   { key: "procedure", num: "8", title: "Clinical Procedure Performed", fields: [
     { t: "preset", id: "anesthesia", label: "Anesthesia technique and anesthetic agent", presets: [
@@ -346,8 +347,11 @@ const STEPS = [
       { name: "IANB", text: "Inferior alveolar nerve block (IANB) using 4% articaine with 1:100,000 epinephrine (1 cartridge 1.8 mL)." },
       { name: "IANB + supplemental infiltration and intraligamentary", text: "Inferior alveolar nerve block (IANB) using 4% articaine with 1:100,000 epinephrine (1 cartridge 1.8 mL). Supplemental buccal infiltration administered using 4% articaine with 1:100,000 epinephrine (half a cartridge), and the other half distributed in intra-ligamentary injections all around the tooth." } ] },
     { t: "preset", id: "isolation", label: "Isolation technique (rubber dam and clamp selection)", presets: [
-      { name: "Winged molar clamp + liquid dam", text: "Single tooth isolation with a winged molar clamp #{clamp}. Light-cured liquid dam (TopDam/FGM) applied to prevent microleakage.",
-        params: [{ key: "clamp", label: "Clamp #", placeholder: "e.g. 12A" }] } ] },
+      { name: "Rubber dam clamp + liquid dam", text: "Single tooth isolation with a {wing} {type} clamp #{clamp}. Light-cured liquid dam (TopDam/FGM) applied to prevent microleakage.",
+        params: [
+          { key: "wing", label: "Clamp", options: ["winged", "wingless"], default: "winged" },
+          { key: "type", label: "Tooth", options: ["molar", "premolar", "anterior"], default: "molar" },
+          { key: "clamp", label: "Clamp #", placeholder: "e.g. 12A" } ] } ] },
     { t: "textarea", id: "access", label: "Access cavity preparation (instruments/materials used)" },
     { t: "textarea", id: "negotiation", label: "Canal negotiation and working length determination (file/instrument – apex locator and radiographs)" },
     { t: "textarea", id: "shaping", label: "Instrumentation / canal shaping (manual – rotary / specify the rotary instrument selected)" },
@@ -396,6 +400,13 @@ function freshState() {
 let S;
 try { S = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch (e) { S = null; }
 if (!S || typeof S !== "object") S = freshState();
+for (const [id, was] of [["tissue", "X"], ["eoOther", "X"], ["insists", "X"], ["relieving", "Not applicable"], ["painMeds", "Not applicable"]]) {
+  const v = S[id];
+  if (!v || typeof v !== "object") continue;
+  S[id] = v.sel === "custom" ? v.custom || "" : "";
+  if (v.sel === 0 && was === "X") (S.quick = S.quick || {})[id] = "X";
+  else if (v.sel === 0) S[id] = was;
+}
 function save() {
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify(S));
@@ -410,6 +421,12 @@ function finalDiagnosis() {
   const s = (pulpWords[p] || p.toLowerCase()) + " + " + r.toLowerCase();
   return s[0].toUpperCase() + s.slice(1);
 }
+function presetText(p, v, blank) {
+  return p.text.replace(/\{(\w+)\}/g, (_, k) => {
+    const pa = (p.params || []).find(x => x.key === k);
+    return ((v.params || {})[k] || "").trim() || (pa && pa.default) || blank;
+  });
+}
 function presetValue(field) {
   const v = S[field.id];
   if (!v || v.sel == null) return "";
@@ -417,12 +434,15 @@ function presetValue(field) {
   const p = field.presets[v.sel];
   if (!p) return "";
   if (p.dynamic) return p.dynamic();
-  return p.text.replace(/\{(\w+)\}/g, (_, k) => ((v.params || {})[k] || "").trim() || "…");
+  return presetText(p, v, "…");
 }
 const FIELD_BY_ID = {};
 STEPS.forEach(s => s.fields.forEach(f => (f.fields || [f]).forEach(x => x.id && (FIELD_BY_ID[x.id] = x))));
-const pv = id => presetValue(FIELD_BY_ID[id]);
-const txt = id => String(S[id] ?? "").trim();
+/* X / N/A quick answers sit beside a question's own input and win over it while chosen. */
+const QUICK = ["X", "N/A"];
+const quickOf = id => (S.quick || {})[id] || "";
+const txt = id => quickOf(id) || String(S[id] ?? "").trim();
+const pv = id => FIELD_BY_ID[id].t === "preset" ? quickOf(id) || presetValue(FIELD_BY_ID[id]) : txt(id);
 const validFileNo = v => /^\d{2}\/\d{6}$/.test(v);
 
 /* ---------------- DOM helpers ---------------- */
@@ -526,7 +546,7 @@ function presetField(f) {
 
   f.presets.forEach((p, i) => {
     const on = v.sel === i;
-    const shown = p.dynamic ? p.dynamic() : p.text.replace(/\{(\w+)\}/g, (_, k) => (v.params[k] || "").trim() || "__");
+    const shown = p.dynamic ? p.dynamic() : presetText(p, v, "__");
     const disabled = p.dynamic && !shown;
     const textEl = h("span", { class: "text" }, disabled ? p.empty : (p.note ? p.note + " — writes “" + shown + "”" : shown));
     const card = h("div", { class: "preset" + (on ? " on" : "") + (disabled ? " disabled" : "") }, [
@@ -536,9 +556,14 @@ function presetField(f) {
     if (on && p.params) {
       card.append(h("div", { class: "params" }, p.params.map(pa => {
         const pid = `f-${f.id}-${pa.key}`;
+        if (pa.options) {
+          const cur = v.params[pa.key] || pa.default;
+          return h("div", { class: "param-choice", role: "group", "aria-label": pa.label }, [pa.label, h("div", { class: "chips" }, pa.options.map(o =>
+            chip(o[0].toUpperCase() + o.slice(1), cur === o, () => { v.params[pa.key] = o; save(); renderStep(); })))]);
+        }
         return h("label", { for: pid }, [pa.label, h("input", { type: "text", id: pid, value: v.params[pa.key] || "", placeholder: pa.placeholder, inputmode: pa.inputmode, class: "mono",
           oninput: e => { v.params[pa.key] = e.target.value; save();
-            textEl.textContent = p.text.replace(/\{(\w+)\}/g, (_, k) => (v.params[k] || "").trim() || "__"); } })]);
+            textEl.textContent = presetText(p, v, "__"); } })]);
       })));
     }
     if (on && !disabled) {
@@ -561,6 +586,19 @@ function presetField(f) {
   }
   list.append(custom);
   return h("div", { class: "field" }, [h("div", { class: "label", id: lid }, f.label), list]);
+}
+
+function withQuick(f, field) {
+  const q = quickOf(f.id);
+  const row = h("div", { class: "chips quick", role: "group", "aria-label": f.label + ": quick answer" }, QUICK.map(o =>
+    chip(o, q === o, () => { S.quick = S.quick || {}; S.quick[f.id] = q === o ? "" : o; save(); renderStep(); })));
+  const [label, ...rest] = [...field.children];
+  label.after(row);
+  if (q) {
+    rest.forEach(el => { el.hidden = true; });
+    row.after(h("div", { class: "hint" }, `Writes “${q}” in the logbook. Tap ${q} again to answer it yourself.`));
+  }
+  return field;
 }
 
 /* ---------------- Tooth chart (FDI, operator's view: patient's right on the left) ---------------- */
@@ -622,12 +660,12 @@ function renderField(f) {
     case "text": return textInput(f);
     case "date": return dateInput(f);
     case "fileno": return fileNoInput(f);
-    case "textarea": return textArea(f);
+    case "textarea": return withQuick(f, textArea(f));
     case "single": return choiceField(f, false);
     case "multi": return choiceField(f, true);
     case "rows": return rowsField(f);
     case "toggle": return toggleField(f);
-    case "preset": return presetField(f);
+    case "preset": return withQuick(f, presetField(f));
     case "tooth": return toothChart(f);
     case "xray": return xrayField(f);
     case "pair": return h("div", { class: "pair" }, f.fields.map(renderField));
@@ -647,6 +685,7 @@ function leafFields(step) {
   return out;
 }
 function answered(f) {
+  if (quickOf(f.id)) return true;
   if (f.t === "xray") return !!IMAGES[f.id];
   const v = S[f.id];
   if (f.t === "preset") return !!presetValue(f);
