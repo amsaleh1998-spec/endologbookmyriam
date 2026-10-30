@@ -276,13 +276,14 @@ const STEPS = [
       { name: "Retreatment for prosthetic purposes", text: "Retreatment referred for prosthetic purposes, no specific patient complaint, tooth is asymptomatic." } ] },
     { t: "textarea", id: "dentalHistory", label: "Dental history" },
     { t: "heading", text: "Type of pain" },
-    { t: "multi", id: "painOnset", label: "Spontaneous / provoked", options: ["Spontaneous", "Provoked"] },
-    { t: "multi", id: "provoked", label: "Provoked by", options: ["Cold", "Heat", "Mastication", "Other"], showIf: () => has("painOnset", "Provoked"),
+    { t: "toggle", id: "painNA", label: "N/A" },
+    { t: "multi", id: "painOnset", label: "Spontaneous / provoked", options: ["Spontaneous", "Provoked"], showIf: () => !S.painNA },
+    { t: "multi", id: "provoked", label: "Provoked by", options: ["Cold", "Heat", "Mastication", "Other"], showIf: () => !S.painNA && has("painOnset", "Provoked"),
       extras: { Other: { id: "provokedOther", placeholder: "Other trigger" } } },
-    { t: "single", id: "duration", label: "Duration", options: ["Brief (<30 seconds)", "Prolonged (>30 seconds)"] },
-    { t: "multi", id: "character", label: "Character", options: ["Throbbing", "Continuous", "Sharp", "Nocturnal", "Other"],
+    { t: "single", id: "duration", label: "Duration", options: ["Brief (<30 seconds)", "Prolonged (>30 seconds)"], showIf: () => !S.painNA },
+    { t: "multi", id: "character", label: "Character", options: ["Throbbing", "Continuous", "Sharp", "Nocturnal", "Other"], showIf: () => !S.painNA,
       extras: { Other: { id: "characterOther", placeholder: "Other character" } } },
-    { t: "single", id: "location", label: "Localized / diffuse", options: ["Localized", "Diffuse"] },
+    { t: "single", id: "location", label: "Localized / diffuse", options: ["Localized", "Diffuse"], showIf: () => !S.painNA },
     { t: "textarea", id: "relieving", label: "Factors relieving pain" },
     { t: "textarea", id: "painMeds", label: "Medications taken during painful episodes" } ] },
 
@@ -356,8 +357,7 @@ const STEPS = [
     { t: "textarea", id: "negotiation", label: "Canal negotiation and working length determination (file/instrument – apex locator and radiographs)" },
     { t: "textarea", id: "shaping", label: "Instrumentation / canal shaping (manual – rotary / specify the rotary instrument selected)" },
     { t: "preset", id: "irrigation", label: "Irrigation and intracanal medication", presets: [
-      { name: "NaOCl + sonic activation + EDTA", text: "The canals were irrigated with sodium hypochlorite ({naocl}%) during instrumentation, with sonic activation using Emate Activator (Denco). A final rinse was made with liquid EDTA 17%, followed by a final 3 mL of sodium hypochlorite.",
-        params: [{ key: "naocl", label: "NaOCl %", placeholder: "e.g. 5.25", inputmode: "decimal" }] } ] },
+      { name: "NaOCl 6% + K10 recapitulation + sonic activation + EDTA", text: "The canals were irrigated with sodium hypochlorite (6%) during instrumentation after each instrument with recapitulation with a K10 file. Sonic activation using Emate Activator (Denco) was applied. A final rinse was made with liquid EDTA 17%, followed by a final 3mL of sodium hypochlorite." } ] },
     { t: "preset", id: "obturation", label: "Obturation technique", presets: [
       { name: "Warm vertical compaction", text: "The canals were obturated with gutta-percha using the warm vertical compaction technique, with the apical down-pack performed using the Fast Pack Pro (Eighteeth), followed by backfilling with thermoplasticized gutta-percha with a gutta condenser." } ] },
     { t: "preset", id: "sealer", label: "Sealer", presets: [
@@ -1027,20 +1027,23 @@ function fillDocument(doc) {
   // 2. History
   F.lines(F.p("Chief complaint:"), pv("chiefComplaint"));
   F.lines(F.p("Dental history:"), txt("dentalHistory"));
-  if (has("painOnset", "Spontaneous")) F.listCheck(F.p("Spontaneous", 0, true));
-  const prov = F.p("Provoked:");
-  if (has("painOnset", "Provoked")) {
-    F.listCheck(prov);
-    F.picks(prov, ["Cold", "Heat", "Mastication", "Other"], S.provoked);
-    if (has("provoked", "Other")) F.blanks(prov, [txt("provokedOther")]);
+  if (S.painNA) F.box(F.p("Type of pain"), 0);
+  else {
+    if (has("painOnset", "Spontaneous")) F.listCheck(F.p("Spontaneous", 0, true));
+    const prov = F.p("Provoked:");
+    if (has("painOnset", "Provoked")) {
+      F.listCheck(prov);
+      F.picks(prov, ["Cold", "Heat", "Mastication", "Other"], S.provoked);
+      if (has("provoked", "Other")) F.blanks(prov, [txt("provokedOther")]);
+    }
+    F.pick(F.p("Duration:"), ["Brief (<30 seconds)", "Prolonged (>30 seconds)"], S.duration);
+    const ch = F.p("Character:");
+    F.picks(ch, ["Throbbing", "Continuous", "Sharp", "Nocturnal", "Other"], S.character);
+    if (has("character", "Other")) F.blanks(ch, [txt("characterOther")]);
+    const loc = F.p("Localized");
+    if (S.location === "Localized") F.listCheck(loc);
+    if (S.location === "Diffuse") F.box(loc, 0);
   }
-  F.pick(F.p("Duration:"), ["Brief (<30 seconds)", "Prolonged (>30 seconds)"], S.duration);
-  const ch = F.p("Character:");
-  F.picks(ch, ["Throbbing", "Continuous", "Sharp", "Nocturnal", "Other"], S.character);
-  if (has("character", "Other")) F.blanks(ch, [txt("characterOther")]);
-  const loc = F.p("Localized");
-  if (S.location === "Localized") F.listCheck(loc);
-  if (S.location === "Diffuse") F.box(loc, 0);
   F.lines(F.p("Factors relieving pain"), pv("relieving"));
   F.lines(F.p("Medications taken during painful episodes"), pv("painMeds"));
 
